@@ -895,7 +895,9 @@ const layer = () =>
         // anywhere else takes none of this machine's variables, keeps its cwd as given and is spawned from the server.
         const local = location.workspaceID === undefined && target.id === environment.id
         const baseEnv = local
-          ? ((Schema.is(SessionSchema.ID)(sessionID) ? yield* environments.get(sessionID) : undefined) ?? process.env)
+          ? SessionEnvironment.localVariables(
+              Schema.is(SessionSchema.ID)(sessionID) ? yield* environments.get(sessionID) : undefined,
+            )
           : undefined
         // A command anywhere else has none of this server's shell paths, and the driver runs only argv, cwd and env.
         // `sh -c` is the contract every POSIX worker can meet; the command is parsed as `sh` for the same reason.

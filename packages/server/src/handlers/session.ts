@@ -1,5 +1,6 @@
 import { Instance } from "@opencode/core/instance/service"
 import { Session } from "@opencode/core/session"
+import { SessionShell } from "@opencode/core/session/shell"
 import { SessionStats } from "@opencode/core/session/stats"
 import { SessionTitle } from "@opencode/core/session/title"
 import { SessionTransfer } from "@opencode/core/session/transfer"
@@ -412,6 +413,15 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
             .shell({ sessionID: ctx.params.sessionID, id: ctx.payload.id, command: ctx.payload.command })
             .pipe(Effect.catchTag("Session.NotFoundError", missingSession))
           return HttpApiSchema.NoContent.make()
+        }),
+      )
+      .handle(
+        "session.completeShellCommand",
+        Effect.fn(function* (ctx) {
+          const env = yield* session
+            .environment({ sessionID: ctx.params.sessionID })
+            .pipe(Effect.catchTag("Session.NotFoundError", missingSession))
+          return { data: yield* SessionShell.complete(ctx.query.prefix, env) }
         }),
       )
       .handle(

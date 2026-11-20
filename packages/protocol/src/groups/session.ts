@@ -2,6 +2,7 @@ import { SessionMessage } from "@opencode/schema/session-message"
 import { SessionInbox } from "@opencode/schema/session-inbox"
 import { PromptInput } from "@opencode/schema/prompt-input"
 import { Session } from "@opencode/schema/session"
+import { Shell } from "@opencode/schema/shell"
 import { SessionStats } from "@opencode/schema/session-stats"
 import { TokenUsage } from "@opencode/schema/token-usage"
 import { Money } from "@opencode/schema/money"
@@ -437,6 +438,22 @@ export const makeSessionGroup = <I extends HttpApiMiddleware.AnyId, S, FormI ext
             summary: "Run shell command",
             description:
               "Execute one shell command in the session's working directory. Emits a shell.started event before execution and a shell.ended event with the merged output after.",
+          }),
+        ),
+    )
+    .add(
+      HttpApiEndpoint.get("session.completeShellCommand", "/api/experimental/session/:sessionID/shell/completions", {
+        params: { sessionID: Session.ID },
+        query: Schema.Struct({ prefix: Schema.String.check(Schema.isPattern(Shell.simpleCommandName)) }),
+        success: Schema.Struct({ data: Schema.Array(Schema.String) }),
+      })
+        .middleware(sessionLocationMiddleware)
+        .annotateMerge(
+          OpenApi.annotations({
+            identifier: "experimental.session.completeShellCommand",
+            summary: "List matching external shell commands",
+            description:
+              "List executable names from the local session's configured PATH without running a shell. Workspace sessions return an empty list. Experimental: may change without compatibility guarantees.",
           }),
         ),
     )

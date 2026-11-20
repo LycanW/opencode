@@ -581,6 +581,12 @@ export type ExperimentalSessionSkillOperation<E = never> = (
   input: ExperimentalSessionSkillInput,
 ) => Effect.Effect<ExperimentalSessionSkillOutput, E>
 
+export type ExperimentalSessionCompleteShellCommandInput = { readonly sessionID: Session.ID; readonly prefix: string }
+export type ExperimentalSessionCompleteShellCommandOutput = ReadonlyArray<string>
+export type ExperimentalSessionCompleteShellCommandOperation<E = never> = (
+  input: ExperimentalSessionCompleteShellCommandInput,
+) => Effect.Effect<ExperimentalSessionCompleteShellCommandOutput, E>
+
 export type ExperimentalSessionWaitInput = { readonly sessionID: Session.ID }
 export type ExperimentalSessionWaitOutput = void
 export type ExperimentalSessionWaitOperation<E = never> = (
@@ -1445,6 +1451,7 @@ export interface ExperimentalSessionApi<E = never> {
   readonly import: ExperimentalSessionImportOperation<E>
   readonly export: ExperimentalSessionExportOperation<E>
   readonly skill: ExperimentalSessionSkillOperation<E>
+  readonly completeShellCommand: ExperimentalSessionCompleteShellCommandOperation<E>
   readonly wait: ExperimentalSessionWaitOperation<E>
   readonly instructions: {
     readonly entry: {

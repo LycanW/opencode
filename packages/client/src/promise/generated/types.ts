@@ -3995,6 +3995,10 @@ export type ExperimentalSessionSkillInput = {
 
 export type ExperimentalSessionSkillOutput = void
 
+export type ExperimentalSessionCompleteShellCommandInput = { readonly sessionID: string; readonly prefix: string }
+
+export type ExperimentalSessionCompleteShellCommandOutput = { data: Array<string> }["data"]
+
 export type ExperimentalSessionWaitInput = { readonly sessionID: string }
 
 export type ExperimentalSessionWaitOutput = void

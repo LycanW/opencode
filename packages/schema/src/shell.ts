@@ -6,6 +6,9 @@ import { ephemeral, inventory } from "./event.js"
 import { ascending } from "./identifier.js"
 import { NonNegativeInt, statics } from "./schema.js"
 
+// Deliberately excludes shell operators, expansions, escapes and path separators.
+export const simpleCommandName = /^[a-zA-Z0-9_][a-zA-Z0-9_.-]{0,127}$/
+
 const IDSchema = Schema.String.check(Schema.isStartingWith("sh_")).pipe(
   Schema.brand("Shell.ID"),
   Schema.annotate({ identifier: "Shell.ID" }),

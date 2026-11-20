@@ -25,7 +25,7 @@ import { useEditorContext } from "../../context/editor"
 import { useClient } from "../../context/client"
 import { useData } from "../../context/data"
 import { getScrollAcceleration } from "../../util/scroll"
-import { useTuiPaths } from "../../context/runtime"
+import { useTuiPaths, useTuiTerminalEnvironment } from "../../context/runtime"
 import { useConfig, useNewDesigns } from "../../config"
 import { useLocation } from "../../context/location"
 import { useTheme } from "../../context/theme"
@@ -43,10 +43,19 @@ import { stringWidth } from "../../util/string-width"
 import { parseFileLineRange, stripFileLineRange } from "../../prompt/parse"
 import { moveSelection, reconcileSelectionWindow, revealSelectionOffset } from "../../ui/select-controller"
 import { directoryAutocomplete, slashArgumentAutocomplete } from "../../prompt/directory-completion"
+import {
+  isWindowsShellLocation,
+  shellCommandOptions,
+  shellCommonPrefix,
+  shellCommandPrefix,
+  shellPathOptions,
+  shellPathQuery,
+} from "../../prompt/shell-path-completion"
 
 export type AutocompleteRef = {
   onInput: (value: string) => void
-  visible: false | "reference" | "command" | "directory"
+  visible: false | "reference" | "command" | "directory" | "shell"
+  completeShell: () => Promise<void>
   completeQueueableCommand: () => boolean
 }
 
@@ -76,6 +85,7 @@ type AutocompleteResults = {
 export function Autocomplete(props: {
   value: string
   sessionID?: string
+  shellMode: boolean
   argumentAutocomplete?: (command: KeymapCommand) => "directory" | undefined
   directoryOptions?: (query: string) => AutocompleteOption[]
   setPrompt: (input: (prompt: PromptInfo) => void) => void
@@ -101,6 +111,7 @@ export function Autocomplete(props: {
   const config = useConfig().data
   const newDesigns = useNewDesigns()
   const paths = useTuiPaths()
+  const terminal = useTuiTerminalEnvironment()
   const location = useLocation()
   const [store, setStore] = createStore({
     index: 0,
@@ -111,6 +122,18 @@ export function Autocomplete(props: {
   const [positionTick, setPositionTick] = createSignal(0)
   const [dismissedValue, setDismissedValue] = createSignal<string>()
   const [confirming, setConfirming] = createSignal<string>()
+  const [shellOptions, setShellOptions] = createSignal<AutocompleteOption[]>([])
+  let shellPager: { text: string; restore: () => void } | undefined
+  let shellLookup = 0
+  onCleanup(() => {
+    shellLookup++
+  })
+
+  createEffect(() => {
+    if (props.shellMode) return
+    shellLookup++
+    if (store.visible === "shell") hide()
+  })
 
   createEffect(() => {
     if (!store.visible) return
@@ -156,7 +179,10 @@ export function Autocomplete(props: {
 
     return props
       .input()
-      .getTextRange(store.visible === "directory" ? store.index : store.index + 1, props.input().cursorOffset)
+      .getTextRange(
+        store.visible === "directory" || store.visible === "shell" ? store.index : store.index + 1,
+        props.input().cursorOffset,
+      )
   })
 
   // filter() reads reactive props.value plus non-reactive cursor/text state.
@@ -332,7 +358,7 @@ export function Autocomplete(props: {
   const [files] = createResource(
     () => ({ query: search(), location: location.current, visible: store.visible }),
     async (input, info): Promise<AutocompleteResults> => {
-      if (!input.visible || input.visible === "command")
+      if (!input.visible || input.visible === "command" || input.visible === "shell")
         return { options: [], failed: false, mode: input.visible, query: input.query, resolved: true }
       if (referenceMatch())
         return { options: [], failed: false, mode: input.visible, query: input.query, resolved: true }
@@ -527,6 +553,7 @@ export function Autocomplete(props: {
   })
 
   const options = createMemo(() => {
+    if (store.visible === "shell") return shellOptions()
     const fileSearch = visibleFiles()
     const referenceMatchValue = referenceMatch()
     const agentsValue = agents()
@@ -695,7 +722,9 @@ export function Autocomplete(props: {
         title: "Hide autocomplete",
         group: "Autocomplete",
         run() {
+          const restore = shellPager?.restore
           hide()
+          restore?.()
         },
       },
       {
@@ -719,6 +748,10 @@ export function Autocomplete(props: {
         title: "Complete autocomplete item",
         group: "Autocomplete",
         run() {
+          if (store.visible === "shell") {
+            move(1)
+            return
+          }
           const selected = options()[store.selected]
           if (selected?.isDirectory) {
             expandDirectory()
@@ -726,6 +759,15 @@ export function Autocomplete(props: {
           }
 
           select()
+        },
+      },
+      {
+        bind: "shift+tab",
+        title: "Previous shell completion",
+        group: "Autocomplete",
+        enabled: () => store.visible === "shell",
+        run() {
+          move(-1)
         },
       },
       {
@@ -738,6 +780,99 @@ export function Autocomplete(props: {
     ],
   }))
 
+  async function completeShell() {
+    if (store.visible) return
+    const input = props.input()
+    const cursor = input.cursorOffset
+    const text = input.plainText
+    const before = input.getTextRange(0, cursor)
+    const activeDirectory = () =>
+      props.sessionID
+        ? data.session.get(props.sessionID)?.location.directory
+        : (location.ref?.directory ??
+          location.current?.directory ??
+          data.location.info()?.directory ??
+          (terminal.localServer ? paths.cwd : undefined))
+    const directory = activeDirectory()
+    if (!directory) return
+    const after = text.slice(before.length)
+    const command = shellCommandPrefix(before, after)
+    const path = command
+      ? undefined
+      : shellPathQuery(before, after, directory, terminal.localServer ? paths.home : undefined)
+    const search = command ?? path
+    if (!search) return
+    const sessionID = props.sessionID
+    const lookup = ++shellLookup
+    const samePrompt = () =>
+      props.shellMode && activeDirectory() === directory && props.sessionID === sessionID && props.input() === input
+
+    const matches = await (async () => {
+      if (command) {
+        // A new composer may supply its terminal environment only when it creates a session.
+        // Until that happens the server cannot know the actual PATH.
+        if (!sessionID) return []
+        const response = await client.api.experimental.session.completeShellCommand({
+          sessionID,
+          prefix: command.prefix,
+        })
+        return shellCommandOptions(response, command.prefix, isWindowsShellLocation(directory))
+      }
+      if (!path) return []
+      const response = await client.api.file.list({ path: path.directory, location: { directory } })
+      return shellPathOptions(response.data, path)
+    })().catch(() => [])
+    if (
+      !matches.length ||
+      lookup !== shellLookup ||
+      !samePrompt() ||
+      input.cursorOffset !== cursor ||
+      input.plainText !== text ||
+      store.visible
+    )
+      return
+    const head = before.slice(0, search.start)
+    const token = before.slice(search.start)
+    const start = measureEditText(head, { widthMethod: renderer.widthMethod })
+    const replace = (end: number, value: string) => {
+      deleteCells(input, start, end)
+      input.cursorOffset = start
+      if (value) input.insertText(value)
+      props.setPrompt((draft) => {
+        draft.text = input.plainText
+      })
+    }
+    if (matches.length === 1) {
+      replace(cursor, matches[0].value)
+      return
+    }
+
+    const common = shellCommonPrefix(
+      token,
+      matches.map((match) => match.value),
+      isWindowsShellLocation(directory),
+    )
+    if (common !== undefined) replace(cursor, common)
+    const preview = head + (common ?? token) + after
+    const end = input.cursorOffset
+    const apply = (value: string) => {
+      if (samePrompt() && input.plainText === preview) replace(end, value)
+    }
+    shellPager = {
+      text: preview,
+      restore: () => {
+        if (common !== undefined) apply(token)
+      },
+    }
+    setShellOptions(
+      matches.map((match) => ({
+        display: Locale.truncateMiddle(match.display, props.anchor().width - 4),
+        onSelect: () => apply(match.value),
+      })),
+    )
+    show("shell", start)
+  }
+
   function show(mode: Exclude<AutocompleteRef["visible"], false>, index = props.input().cursorOffset) {
     setStore({
       visible: mode,
@@ -746,6 +881,7 @@ export function Autocomplete(props: {
   }
 
   function hide(removeToken = false) {
+    shellPager = undefined
     if (removeToken && store.visible === "command") {
       const input = props.input()
       deleteCells(input, store.index, input.cursorOffset)
@@ -776,7 +912,14 @@ export function Autocomplete(props: {
         select()
         return true
       },
+      completeShell,
       onInput(value) {
+        if (props.shellMode) {
+          if (store.visible === "shell" && value === shellPager?.text) return
+          shellLookup++
+          if (store.visible) hide()
+          return
+        }
         if (dismissedValue() === value) return
         setDismissedValue(undefined)
         const input = props.input()

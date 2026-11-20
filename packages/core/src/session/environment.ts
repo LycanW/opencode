@@ -14,6 +14,9 @@ export interface Interface {
 
 export class Service extends Context.Service<Service, Interface>()("@opencode/SessionEnvironment") {}
 
+// The captured environment replaces, rather than extends, the local server environment.
+export const localVariables = (captured?: Variables): NodeJS.ProcessEnv => captured ?? process.env
+
 const layer = Layer.sync(Service, () => {
   const environments = new Map<SessionSchema.ID, Variables>()
 

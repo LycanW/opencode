@@ -93,6 +93,8 @@ import type {
   ExperimentalSessionExportOutput,
   ExperimentalSessionSkillInput,
   ExperimentalSessionSkillOutput,
+  ExperimentalSessionCompleteShellCommandInput,
+  ExperimentalSessionCompleteShellCommandOutput,
   ExperimentalSessionWaitInput,
   ExperimentalSessionWaitOutput,
   ExperimentalSessionInstructionsEntryListInput,
@@ -1116,6 +1118,18 @@ export function make(options: ClientOptions) {
             },
             requestOptions,
           ),
+        completeShellCommand: (input: ExperimentalSessionCompleteShellCommandInput, requestOptions?: RequestOptions) =>
+          request<{ readonly data: ExperimentalSessionCompleteShellCommandOutput }>(
+            {
+              method: "GET",
+              path: `/api/experimental/session/${encodeURIComponent(input.sessionID)}/shell/completions`,
+              query: { prefix: input["prefix"] },
+              successStatus: 200,
+              declaredStatuses: [400, 401, 404],
+              empty: false,
+            },
+            requestOptions,
+          ).then((value) => value.data),
         wait: (input: ExperimentalSessionWaitInput, requestOptions?: RequestOptions) =>
           request<ExperimentalSessionWaitOutput>(
             {

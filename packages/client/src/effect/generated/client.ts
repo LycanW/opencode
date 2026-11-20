@@ -99,6 +99,8 @@ import type {
   ExperimentalSessionExportOutput,
   ExperimentalSessionSkillInput,
   ExperimentalSessionSkillOutput,
+  ExperimentalSessionCompleteShellCommandInput,
+  ExperimentalSessionCompleteShellCommandOutput,
   ExperimentalSessionWaitInput,
   ExperimentalSessionWaitOutput,
   ExperimentalSessionInstructionsEntryListInput,
@@ -842,6 +844,18 @@ const EndpointExperimentalSessionSkill = (raw: RawClient["server.session"]) => (
     }).pipe(Effect.mapError(mapClientError)),
   )
 
+const EndpointExperimentalSessionCompleteShellCommand =
+  (raw: RawClient["server.session"]) => (input: ExperimentalSessionCompleteShellCommandInput) =>
+    preserveEffect<ExperimentalSessionCompleteShellCommandOutput>()(
+      raw["session.completeShellCommand"]({
+        params: { sessionID: input["sessionID"] },
+        query: { prefix: input["prefix"] },
+      }).pipe(
+        Effect.mapError(mapClientError),
+        Effect.map((value) => value.data),
+      ),
+    )
+
 const EndpointExperimentalSessionWait = (raw: RawClient["server.session"]) => (input: ExperimentalSessionWaitInput) =>
   preserveEffect<ExperimentalSessionWaitOutput>()(
     raw["session.wait"]({ params: { sessionID: input["sessionID"] } }).pipe(Effect.mapError(mapClientError)),
@@ -891,6 +905,7 @@ const adaptGroupExperimentalSession = (raw: RawClient["server.session"]) => ({
   import: EndpointExperimentalSessionImport(raw),
   export: EndpointExperimentalSessionExport(raw),
   skill: EndpointExperimentalSessionSkill(raw),
+  completeShellCommand: EndpointExperimentalSessionCompleteShellCommand(raw),
   wait: EndpointExperimentalSessionWait(raw),
   instructions: {
     entry: {

@@ -6,6 +6,22 @@ import { Instance } from "../instance/service.js"
 import { Plugin } from "../plugin/service.js"
 import { Shell } from "../shell.js"
 import { ShellResult } from "../shell/result.js"
+import { listPathCommands } from "../shell/completion.js"
+import { SessionEnvironment } from "./environment.js"
+import { Location } from "../location.js"
+
+export const complete = Effect.fn("SessionShell.complete")(function* (
+  prefix: string,
+  captured?: SessionEnvironment.Variables,
+) {
+  const location = yield* Location.Service
+  // Workspace commands inherit their worker's own environment. Do not substitute the host PATH.
+  if (location.workspaceID !== undefined) return []
+  const env = SessionEnvironment.localVariables(captured)
+  return yield* Effect.promise((signal) => listPathCommands(prefix, location.directory, env, signal)).pipe(
+    Effect.timeoutOrElse({ duration: "2 seconds", orElse: () => Effect.succeed([]) }),
+  )
+})
 
 export const start = Effect.fn("SessionShell.start")(function* (input: { session: Session.Info; command: string }) {
   const instances = yield* Instance.Service

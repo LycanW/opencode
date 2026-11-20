@@ -996,9 +996,17 @@ export function Prompt(props: PromptProps) {
     return {
       priority: 1,
       target: inputTarget,
-      enabled: inputTarget() !== undefined && !disabled() && store.mode === "shell",
+      enabled: inputTarget() !== undefined && !disabled() && store.mode === "shell" && !auto()?.visible,
       commands: [
         { bind: "escape", title: "Exit shell mode", group: "Prompt", run: () => setStore("mode", "normal") },
+        {
+          bind: "tab",
+          title: "Complete shell input",
+          group: "Prompt",
+          run: () => {
+            void auto()?.completeShell()
+          },
+        },
         {
           bind: "ctrl+c",
           title: "Exit shell mode",
@@ -1992,6 +2000,7 @@ export function Prompt(props: PromptProps) {
       </box>
       <Autocomplete
         sessionID={props.sessionID}
+        shellMode={store.mode === "shell"}
         argumentAutocomplete={(command) => (command.id === "session.cd" ? "directory" : undefined)}
         directoryOptions={(query): AutocompleteOption[] => {
           if (query !== "") return []
